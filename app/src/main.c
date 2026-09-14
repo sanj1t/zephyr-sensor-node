@@ -1,3 +1,4 @@
+
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include "app_state.h"
@@ -27,7 +28,7 @@ int main(void)
     }
 
     LOG_INF("zephyr-sensor-node booting on native_sim");
-    LOG_INF("Day 3: command thread active; try 'help' or 'status'");
+    LOG_INF("Day 5: timer-driven sensor pipeline active");
 
     struct k_msgq *sensor_q = sensor_module_get_msgq();
 

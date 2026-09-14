@@ -5,83 +5,79 @@
 
 LOG_MODULE_REGISTER(sensor_module, LOG_LEVEL_INF);
 
-#define SENSOR_THREAD_STACK_SIZE 1024
 #define SENSOR_THREAD_PRIORITY 5
 #define SENSOR_PERIOD_MS 1000
+#define SENSOR_QUEUE_MAX_ITEMS 8
 
 K_MSGQ_DEFINE(sensor_msgq, sizeof(sensor_sample_t), SENSOR_QUEUE_MAX_ITEMS, 4);
 
-static struct k_thread sensor_thread_data;
-K_THREAD_STACK_DEFINE(sensor_thread_stack, SENSOR_THREAD_STACK_SIZE);
+/* Timer + delayable work for periodic sampling */
+static struct k_timer sensor_timer;
+static struct k_work_delayable sensor_work;
 
-static int32_t next_sensor_value(bool fault_mode_enabled)
+static uint32_t sample_seq;
+
+static void sensor_work_handler(struct k_work *work)
 {
+    ARG_UNUSED(work);
+
     static int32_t normal_value = 20;
 
-    if (fault_mode_enabled) {
-        return 999;
+    system_state_t state = app_state_get_copy();
+
+    int32_t value = state.fault_mode_enabled ? 999 : normal_value;
+
+    sensor_sample_t sample = {
+        .value = value,
+        .seq = sample_seq,
+        .timestamp_ms = k_uptime_get(),
+        .injected_fault = state.fault_mode_enabled,
+    };
+
+    int ret = k_msgq_put(&sensor_msgq, &sample, K_NO_WAIT);
+    if (ret == 0) {
+        app_state_set_latest_value(sample.value);
+        app_state_inc_samples_produced();
+        app_state_update_sensor_seen(sample.timestamp_ms);
+        LOG_INF("Produced sample seq=%u value=%d fault=%d",
+                sample.seq, sample.value, sample.injected_fault);
+    } else {
+        app_state_inc_queue_drops();
+        LOG_WRN("Sensor queue full, dropped seq=%u", sample.seq);
     }
 
-    int32_t current = normal_value;
-    normal_value++;
-    if (normal_value > 30) {
-        normal_value = 20;
+    /* Advance state for next sample */
+    sample_seq++;
+    if (!state.fault_mode_enabled) {
+        normal_value++;
+        if (normal_value > 30) {
+            normal_value = 20;
+        }
     }
 
-    return current;
+    /* Reschedule work for next period */
+    k_work_schedule(&sensor_work, K_MSEC(SENSOR_PERIOD_MS));
 }
 
-static void sensor_thread_entry(void *p1, void *p2, void *p3)
+static void sensor_timer_handler(struct k_timer *timer)
 {
-    ARG_UNUSED(p1);
-    ARG_UNUSED(p2);
-    ARG_UNUSED(p3);
+    ARG_UNUSED(timer);
 
-    uint32_t seq = 0;
-
-    while (1) {
-        system_state_t state = app_state_get_copy();
-
-        sensor_sample_t sample = {
-            .value = next_sensor_value(state.fault_mode_enabled),
-            .seq = seq,
-            .timestamp_ms = k_uptime_get(),
-            .injected_fault = state.fault_mode_enabled,
-        };
-
-        int ret = k_msgq_put(&sensor_msgq, &sample, K_NO_WAIT);
-        if (ret == 0) {
-            app_state_set_latest_value(sample.value);
-            app_state_inc_samples_produced();
-            app_state_update_sensor_seen(sample.timestamp_ms);
-            LOG_INF("Produced sample seq=%u value=%d fault=%d",
-                    sample.seq, sample.value, sample.injected_fault);
-        } else {
-            app_state_inc_queue_drops();
-            LOG_WRN("Sensor queue full, dropped seq=%u", sample.seq);
-        }
-
-        seq++;
-        k_msleep(SENSOR_PERIOD_MS);
-    }
+    /* Just submit work to run in thread context */
+    k_work_schedule(&sensor_work, K_NO_WAIT);
 }
 
 int sensor_module_init(void)
 {
-    k_tid_t tid = k_thread_create(&sensor_thread_data,
-                                  sensor_thread_stack,
-                                  K_THREAD_STACK_SIZEOF(sensor_thread_stack),
-                                  sensor_thread_entry,
-                                  NULL, NULL, NULL,
-                                  SENSOR_THREAD_PRIORITY,
-                                  0,
-                                  K_NO_WAIT);
+    sample_seq = 0;
 
-    if (tid == NULL) {
-        return -1;
-    }
+    /* Initialize delayable work */
+    k_work_init_delayable(&sensor_work, sensor_work_handler);
 
-    k_thread_name_set(tid, "sensor_thread");
+    /* Initialize and start periodic timer */
+    k_timer_init(&sensor_timer, sensor_timer_handler, NULL);
+    k_timer_start(&sensor_timer, K_MSEC(SENSOR_PERIOD_MS), K_MSEC(SENSOR_PERIOD_MS));
+
     return 0;
 }
 
