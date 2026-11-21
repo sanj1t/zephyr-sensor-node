@@ -8,5 +8,9 @@
 
 int sensor_module_init(void);
 struct k_msgq *sensor_module_get_msgq(void);
+struct k_sem *sensor_module_get_sample_sem(void);
 
 #endif
+
+
+

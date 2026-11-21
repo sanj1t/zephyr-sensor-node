@@ -10,6 +10,7 @@ LOG_MODULE_REGISTER(sensor_module, LOG_LEVEL_INF);
 #define SENSOR_QUEUE_MAX_ITEMS 8
 
 K_MSGQ_DEFINE(sensor_msgq, sizeof(sensor_sample_t), SENSOR_QUEUE_MAX_ITEMS, 4);
+K_SEM_DEFINE(sample_sem, 0, 1);
 
 /* Timer + delayable work for periodic sampling */
 static struct k_timer sensor_timer;
@@ -39,6 +40,10 @@ static void sensor_work_handler(struct k_work *work)
         app_state_set_latest_value(sample.value);
         app_state_inc_samples_produced();
         app_state_update_sensor_seen(sample.timestamp_ms);
+
+        /* Signal consumer that a new sample is ready */
+        k_sem_give(&sample_sem);
+
         LOG_INF("Produced sample seq=%u value=%d fault=%d",
                 sample.seq, sample.value, sample.injected_fault);
     } else {
@@ -84,4 +89,9 @@ int sensor_module_init(void)
 struct k_msgq *sensor_module_get_msgq(void)
 {
     return &sensor_msgq;
+}
+
+struct k_sem *sensor_module_get_sample_sem(void)
+{
+    return &sample_sem;
 }

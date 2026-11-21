@@ -1,4 +1,3 @@
-
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include "app_state.h"
@@ -28,13 +27,20 @@ int main(void)
     }
 
     LOG_INF("zephyr-sensor-node booting on native_sim");
-    LOG_INF("Day 5: timer-driven sensor pipeline active");
+    LOG_INF("Semaphore-signaled sensor pipeline active");
 
     struct k_msgq *sensor_q = sensor_module_get_msgq();
+    struct k_sem *sample_sem = sensor_module_get_sample_sem();
 
     while (1) {
+        /* Wait for producer to signal a new sample */
+        ret = k_sem_take(sample_sem, K_FOREVER);
+        if (ret != 0) {
+            continue;
+        }
+
         sensor_sample_t sample;
-        ret = k_msgq_get(sensor_q, &sample, K_FOREVER);
+        ret = k_msgq_get(sensor_q, &sample, K_NO_WAIT);
         if (ret == 0) {
             app_state_inc_samples_processed();
             app_state_update_processing_seen(k_uptime_get());
