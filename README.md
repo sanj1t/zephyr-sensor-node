@@ -1,6 +1,6 @@
 # zephyr-sensor-node
-
-A Zephyr RTOS application built for `native_sim` that demonstrates a modular embedded software architecture with periodic sensor sampling, inter-thread communication, shared state management, and a shell-based command interface.
+![CI](https://github.com/sanj1t/zephyr-sensor-node/actions/workflows/ci.yaml/badge.svg)
+A Zephyr RTOS application for `native_sim` that demonstrates a modular embedded software architecture: periodic sensor sampling, inter-thread communication, mutex-protected shared state, runtime fault injection, and a Zephyr shell command interface. It includes a ztest unit-test suite run with Twister.
 
 ## Overview
 
@@ -9,11 +9,11 @@ The application implements a small sensor pipeline:
 - A periodic timer triggers sensor sampling.
 - A delayable work item produces a sensor sample.
 - The sample is placed into a message queue.
+- A semaphore signals the consumer that new data is available.
 - The main thread consumes the sample and updates shared state.
-- A semaphore signals the consumer when new data is available.
-- A Zephyr shell provides runtime commands for status, statistics, and fault control.
+- A Zephyr shell provides runtime commands for status, statistics, and fault injection.
 
-This project is designed to demonstrate common Zephyr RTOS patterns in a clean, interview-ready codebase.
+The project is built to show common Zephyr RTOS patterns in a small, readable codebase.
 
 ## Architecture
 
@@ -40,6 +40,96 @@ This project is designed to demonstrate common Zephyr RTOS patterns in a clean, 
                             +---------------------+
 ```
 
+Sample generation is kept in a separate pure module, `sensor_logic.c`. It has no kernel dependencies, so it can be unit tested in isolation. `sensor_module.c` handles the timer, work item, and queue, and calls into `sensor_logic.c` to produce each value.
+
+## Features
+
+- Timer-driven periodic sampling every 1000 ms.
+- Producer/consumer pipeline using `k_msgq` and a semaphore.
+- Shared application state protected by a mutex.
+- Three injectable fault types: `range`, `stuck`, and `noisy`.
+- Fault duration tracking and warning-level logging while a fault is active.
+- Queue drop counting.
+- Zephyr shell command interface under a single `app` root command.
+- Unit tests for the sensor value logic using ztest and Twister.
+- Runs on `native_sim` with no hardware required.
+- GitHub Actions CI that builds the app and runs the Twister suite on every push.
+
+## Fault types
+
+| Fault | Shell command | Behavior |
+|---|---|---|
+| None | `app fault_off` | Values cycle through 20–30 |
+| Range | `app fault_range` | Out-of-range value (`999`) |
+| Stuck | `app fault_stuck` | Value stops changing |
+| Noisy | `app fault_noisy` | Value varies with the sample sequence number |
+
+## Shell commands
+
+| Command | Description |
+|---|---|
+| `app status` | Current health and state: latest value, fault mode and type, last activity timestamps, queue health |
+| `app stats` | Cumulative counters: samples produced and processed, queue drops, heartbeat count, fault duration |
+| `app fault_range` | Enable the range fault |
+| `app fault_stuck` | Enable the stuck fault |
+| `app fault_noisy` | Enable the noisy fault |
+| `app fault_off` | Clear all faults and resume normal operation |
+
+Example:
+
+```text
+sensor-node:~$ app status
+STATUS
+  latest_value: 25
+  fault_mode: disabled
+  fault_type: none
+  fault_active: no
+  last_sensor_seen_ms: 12345
+  last_processing_seen_ms: 12345
+  queue_health: healthy
+
+sensor-node:~$ app stats
+STATS
+  samples_produced: 42
+  samples_processed: 42
+  queue_drops: 0
+  heartbeat_count: 42
+  fault_duration_ms: 0
+```
+
+## Build and run
+
+Prerequisites: a working Zephyr workspace (this project was developed against a Zephyr development build, `v4.4.0-7914-g7608f5eb4565`) and the Zephyr SDK or a host toolchain capable of building `native_sim`.
+
+```bash
+source ~/zephyrproject/.venv/bin/activate
+export ZEPHYR_BASE=~/zephyrproject/zephyr
+cd ~/zephyr-sensor-node/app
+west build -b native_sim . --pristine
+west build -t run
+```
+
+The run prints a pseudo-terminal path for the shell UART, for example `/dev/pts/1`. In a second terminal, attach to it:
+
+```bash
+screen /dev/pts/1
+```
+
+Press Enter to get the shell prompt, then run `help` or any `app` command. To exit `screen`, press `Ctrl+A`, then `k`, then `y`.
+
+## Testing
+
+Unit tests live in `tests/` and cover the sensor value generation logic: the normal 20–30 cycle and wrap-around, plus the range, stuck, and noisy fault behaviors.
+
+```bash
+source ~/zephyrproject/.venv/bin/activate
+export ZEPHYR_BASE=~/zephyrproject/zephyr
+cd ~/zephyr-sensor-node
+west twister -T tests -p native_sim -v
+```
+
+Twister writes its results to `twister-out/`, which is git-ignored.
+
 ## Project structure
 
 ```text
@@ -51,73 +141,47 @@ zephyr-sensor-node/
 │   │   ├── app_state.h
 │   │   ├── app_types.h
 │   │   ├── command_module.h
+│   │   ├── sensor_logic.h
 │   │   └── sensor_module.h
 │   └── src/
 │       ├── app_state.c
 │       ├── command_module.c
 │       ├── main.c
+│       ├── sensor_logic.c
 │       └── sensor_module.c
+├── tests/
+│   └── sensor_logic/
+│       ├── CMakeLists.txt
+│       ├── prj.conf
+│       ├── testcase.yaml
+│       └── src/
+│           └── main.c
+├── west.yml
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── .gitignore
+├── LICENSE
 └── README.md
 ```
 
-## Build and run
-
-From the Zephyr workspace:
-
-```bash
-source ~/zephyrproject/.venv/bin/activate
-export ZEPHYR_BASE=~/zephyrproject/zephyr
-cd ~/zephyr-sensor-node/app
-west build -b native_sim . --pristine
-west build -t run
-```
-
-## Shell commands
-
-Once the application is running, use the Zephyr shell:
-
-```text
-app status
-app stats
-app fault_on
-app fault_off
-```
-
-Example:
-
-```text
-sensor-node:~$ app status
-STATUS latest=25 produced=12 processed=12 drops=0 hb=12 fault_mode=0 fault_active=0
-```
-
-## Current features
-
-- Timer-driven periodic sampling.
-- Producer/consumer pattern using `k_msgq`.
-- Semaphore-based signaling between producer and consumer.
-- Shared state protected with a mutex.
-- Runtime fault-mode control.
-- Zephyr shell commands for status and statistics.
-- Logging via Zephyr logging subsystem.
-- Runs on `native_sim` without physical hardware.
-
 ## What this demonstrates
 
-- Zephyr RTOS application structure.
-- Kernel objects: timers, workqueues, message queues, semaphores, mutexes.
-- Thread-safe shared state.
-- Producer/consumer design.
-- Runtime command interface using Zephyr shell.
-- Logging and diagnostics.
+- Zephyr application structure with separated modules and shared type definitions.
+- Kernel objects in a working pipeline: timers, delayable work, message queues, semaphores, and mutexes.
+- Thread-safe shared state accessed through copy-out snapshots.
+- Producer/consumer design with explicit overflow handling and drop counting.
+- Runtime diagnostics through the Zephyr shell, with a clear split between current status and cumulative statistics.
+- Fault injection for exercising error-handling paths without hardware.
+- Separation of pure logic from kernel code so it can be unit tested with ztest and Twister.
 - Simulation-first embedded development with `native_sim`.
 
 ## Future work
 
-- Add more realistic fault types (stuck, noisy, drift).
-- Add unit tests using `ztest`.
-- Add CI workflow for automated builds.
+- Add unit tests for the shared state module.
+- Add a drift fault type.
+- Add task watchdog supervision of the producer and consumer paths, reported through `app status`.
 - Add a real hardware target.
-- Add structured logging and metrics.
 
 ## License
 
