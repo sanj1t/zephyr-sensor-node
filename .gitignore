@@ -1,7 +1,6 @@
-# Zephyr / build outputs
+# Build output
 build/
-**/build/
-.twister-out/
+twister-out*/
 *.o
 *.a
 *.elf
@@ -17,6 +16,7 @@ cmake_install.cmake
 build.ninja
 .ninja_deps
 .ninja_log
+compile_commands.json
 
 # Python / virtualenv
 .venv/
@@ -28,4 +28,6 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+.cache/
 *.swp
+*.swo
