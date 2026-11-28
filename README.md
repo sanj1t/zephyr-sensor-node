@@ -1,5 +1,4 @@
-# zephyr-sensor-node
-![CI](https://github.com/sanj1t/zephyr-sensor-node/actions/workflows/ci.yaml/badge.svg)
+# zephyr-sensor-node ![CI](https://github.com/sanj1t/zephyr-sensor-node/actions/workflows/ci.yaml/badge.svg)
 A Zephyr RTOS application for `native_sim` that demonstrates a modular embedded software architecture: periodic sensor sampling, inter-thread communication, mutex-protected shared state, runtime fault injection, and a Zephyr shell command interface. It includes a ztest unit-test suite run with Twister.
 
 ## Overview
