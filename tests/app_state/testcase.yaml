@@ -1,0 +1,5 @@
+tests:
+  app.app_state:
+    platform_allow:
+      - native_sim
+    tags: unit
