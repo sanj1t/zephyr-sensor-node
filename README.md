@@ -149,12 +149,12 @@ zephyr-sensor-node/
 │       ├── sensor_logic.c
 │       └── sensor_module.c
 ├── tests/
-│   └── app_state/
-│       ├── CMakeLists.txt
-│       ├── prj.conf
-│       ├── testcase.yaml
-│       └── src/
-│           └── main.c
+│   ├── app_state/
+│   │   ├── CMakeLists.txt
+│   │   ├── prj.conf
+│   │   ├── testcase.yaml
+│   │   └── src/
+│   │       └── main.c
 │   └── sensor_logic/
 │       ├── CMakeLists.txt
 │       ├── prj.conf
