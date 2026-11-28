@@ -1,0 +1,5 @@
+tests:
+  app.sensor_logic:
+    platform_allow:
+      - native_sim
+    tags: unit

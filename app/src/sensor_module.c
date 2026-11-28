@@ -1,6 +1,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+
 #include "sensor_module.h"
+#include "sensor_logic.h"
 #include "app_state.h"
 
 LOG_MODULE_REGISTER(sensor_module, LOG_LEVEL_INF);
@@ -14,33 +16,7 @@ static struct k_timer sensor_timer;
 static struct k_work_delayable sensor_work;
 
 static uint32_t sample_seq;
-static int32_t normal_value = 20;
-
-static int32_t generate_value(fault_type_t type)
-{
-    switch (type) {
-    case FAULT_RANGE:
-        return 999;
-
-    case FAULT_STUCK:
-        return normal_value;
-
-    case FAULT_NOISY:
-        return normal_value + (sample_seq % 5);
-
-    case FAULT_NONE:
-    default:
-        break;
-    }
-
-    int32_t value = normal_value;
-    normal_value++;
-    if (normal_value > 30) {
-        normal_value = 20;
-    }
-
-    return value;
-}
+static int32_t normal_value = SENSOR_NORMAL_MIN;
 
 static void sensor_work_handler(struct k_work *work)
 {
@@ -48,7 +24,7 @@ static void sensor_work_handler(struct k_work *work)
 
     system_state_t state = app_state_get_copy();
 
-    int32_t value = generate_value(state.fault_type);
+    int32_t value = sensor_logic_generate(state.fault_type, sample_seq, &normal_value);
 
     sensor_sample_t sample = {
         .value = value,
@@ -58,14 +34,15 @@ static void sensor_work_handler(struct k_work *work)
     };
 
     int ret = k_msgq_put(&sensor_msgq, &sample, K_NO_WAIT);
+
     if (ret == 0) {
         app_state_set_latest_value(sample.value);
         app_state_inc_samples_produced();
         app_state_update_sensor_seen(sample.timestamp_ms);
 
         if (state.fault_mode_enabled) {
-            uint32_t now = k_uptime_get_32();
-            uint32_t duration = now - state.fault_start_time_ms;
+            uint32_t duration = k_uptime_get_32() - state.fault_start_time_ms;
+
             LOG_WRN("Fault sample seq=%u type=%d value=%d duration=%u ms",
                     sample.seq, state.fault_type, sample.value, duration);
         } else {
@@ -90,7 +67,7 @@ static void sensor_timer_handler(struct k_timer *timer)
 int sensor_module_init(void)
 {
     sample_seq = 0;
-    normal_value = 20;
+    normal_value = SENSOR_NORMAL_MIN;
 
     k_work_init_delayable(&sensor_work, sensor_work_handler);
 
