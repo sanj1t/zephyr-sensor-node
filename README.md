@@ -149,6 +149,12 @@ zephyr-sensor-node/
 │       ├── sensor_logic.c
 │       └── sensor_module.c
 ├── tests/
+│   └── app_state/
+│       ├── CMakeLists.txt
+│       ├── prj.conf
+│       ├── testcase.yaml
+│       └── src/
+│           └── main.c
 │   └── sensor_logic/
 │       ├── CMakeLists.txt
 │       ├── prj.conf
@@ -158,7 +164,7 @@ zephyr-sensor-node/
 ├── west.yml
 ├── .github/
 │   └── workflows/
-│       └── ci.yml
+│       └── ci.yaml
 ├── .gitignore
 ├── LICENSE
 └── README.md
@@ -177,7 +183,6 @@ zephyr-sensor-node/
 
 ## Future work
 
-- Add unit tests for the shared state module.
 - Add a drift fault type.
 - Add task watchdog supervision of the producer and consumer paths, reported through `app status`.
 - Add a real hardware target.
